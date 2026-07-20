@@ -13,7 +13,7 @@ buildscript {
 apply plugin: 'net.minecraftforge.gradle.forge'
 apply plugin: 'org.spongepowered.mixin'
 
-version = "2.0" // Build fix: cache MCP artifacts
+version = "2.0"
 group = "me.cheat"
 archivesBaseName = "RenderExtender"
 
@@ -33,8 +33,13 @@ repositories {
     mavenCentral()
 }
 
+configurations {
+    shade
+    compile.extendsFrom shade
+}
+
 dependencies {
-    compile('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
+    shade('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
         exclude module: 'guava'
         exclude module: 'commons-io'
         exclude module: 'gson'
@@ -48,9 +53,8 @@ mixin {
 }
 
 jar {
-    from(configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }) {
-        exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.MF'
-    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
     
     manifest {
         attributes(
