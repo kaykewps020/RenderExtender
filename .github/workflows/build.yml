@@ -13,10 +13,7 @@ jobs:
           java-version: '8'
       - name: Pre-populate Gradle cache with MCP artifacts
         run: |
-          # Pre-download MCP artifacts to Gradle module cache
-          # This avoids timeouts on libraries.minecraft.net
-
-          # 1. MCP SRG mapping (base MCP config for 1.8.9)
+          # Download MCP SRG mapping (base MCP config for 1.8.9)
           echo "Downloading mcp-1.8.9-srg.zip..."
           curl -sL --connect-timeout 30 --max-time 120 \
             "https://maven.minecraftforge.net/de/oceanlabs/mcp/mcp/1.8.9/mcp-1.8.9-srg.zip" \
@@ -26,28 +23,14 @@ jobs:
           cp /tmp/mcp-1.8.9-srg.zip ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp/1.8.9/$HASH/mcp-1.8.9-srg.zip
           echo "Cached mcp-1.8.9-srg.zip (hash: $HASH)"
 
-          # Also create minimal POM for mcp:1.8.9
-          cat > /tmp/mcp-1.8.9.pom << 'POMEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>de.oceanlabs.mcp</groupId>
-  <artifactId>mcp</artifactId>
-  <version>1.8.9</version>
-  <packaging>jar</packaging>
-</project>
-POMEOF
+          # Create minimal POM for mcp:1.8.9
+          printf '<?xml version="1.0" encoding="UTF-8"?>\n<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>de.oceanlabs.mcp</groupId>\n  <artifactId>mcp</artifactId>\n  <version>1.8.9</version>\n  <packaging>jar</packaging>\n</project>\n' > /tmp/mcp-1.8.9.pom
           POM_HASH=$(sha1sum /tmp/mcp-1.8.9.pom | cut -d' ' -f1)
           mkdir -p ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp/1.8.9/$POM_HASH
           cp /tmp/mcp-1.8.9.pom ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp/1.8.9/$POM_HASH/mcp-1.8.9.pom
           echo "Cached mcp-1.8.9.pom (hash: $POM_HASH)"
 
-          # Also download the module metadata files
-          for ext in "module" "jar"; do
-            cp /tmp/mcp-1.8.9.pom ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp/1.8.9/$POM_HASH/mcp-1.8.9.$ext 2>/dev/null || true
-          done
-
-          # 2. MCP stable mappings
+          # Pre-download MCP stable mapping
           echo "Downloading mcp_stable-22-1.8.9.zip..."
           curl -sL --connect-timeout 30 --max-time 120 \
             "https://maven.minecraftforge.net/de/oceanlabs/mcp/mcp_stable/22-1.8.9/mcp_stable-22-1.8.9.zip" \
@@ -57,22 +40,15 @@ POMEOF
           cp /tmp/mcp_stable-22-1.8.9.zip ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp_stable/22-1.8.9/$HASH2/mcp_stable-22-1.8.9.zip
           echo "Cached mcp_stable-22-1.8.9.zip (hash: $HASH2)"
 
-          # Stable POM
-          cat > /tmp/mcp_stable-22-1.8.9.pom << 'POMEOF2'
-<?xml version="1.0" encoding="UTF-8"?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>de.oceanlabs.mcp</groupId>
-  <artifactId>mcp_stable</artifactId>
-  <version>22-1.8.9</version>
-  <packaging>jar</packaging>
-</project>
-POMEOF2
+          # Create minimal POM for mcp_stable:22-1.8.9
+          printf '<?xml version="1.0" encoding="UTF-8"?>\n<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>de.oceanlabs.mcp</groupId>\n  <artifactId>mcp_stable</artifactId>\n  <version>22-1.8.9</version>\n  <packaging>jar</packaging>\n</project>\n' > /tmp/mcp_stable-22-1.8.9.pom
           POM_HASH2=$(sha1sum /tmp/mcp_stable-22-1.8.9.pom | cut -d' ' -f1)
           mkdir -p ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp_stable/22-1.8.9/$POM_HASH2
           cp /tmp/mcp_stable-22-1.8.9.pom ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp/mcp_stable/22-1.8.9/$POM_HASH2/mcp_stable-22-1.8.9.pom
           echo "Cached mcp_stable-22-1.8.9.pom (hash: $POM_HASH2)"
 
+          # List all cached files for verification
+          find ~/.gradle/caches/modules-2/files-2.1/de.oceanlabs.mcp -type f
           echo "=== Gradle cache populated ==="
       - name: Build with Gradle
         run: |
