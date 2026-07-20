@@ -3,8 +3,6 @@ name: Build RenderExtender 1.8.9 (Forge)
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -20,19 +18,11 @@ jobs:
         with:
           java-version: '8'
           distribution: 'temurin'
-          java-package: jdk
 
-      - name: 🔧 Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 4.4.1
-
-      - name: 🔨 Gerar Wrapper e Buildar
+      - name: 🔨 Buildar com Gradle Wrapper
         run: |
-          gradle wrapper --gradle-version 4.4.1
           chmod +x gradlew
-          export GRADLE_OPTS="-Xmx2G"
-          ./gradlew build --no-daemon --stacktrace
+          ./gradlew build --no-daemon
 
       - name: 📦 Upload .jar
         uses: actions/upload-artifact@v4
@@ -42,4 +32,4 @@ jobs:
           if-no-files-found: error
 
       - name: 📋 Listar
-        run: ls -lh build/libs/ || echo "build/libs not found"
+        run: ls -lh build/libs/
