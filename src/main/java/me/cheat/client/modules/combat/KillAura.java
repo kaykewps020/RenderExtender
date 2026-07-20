@@ -219,7 +219,7 @@ public class KillAura extends Module {
 
         // Cooldown check - more reliable than CPS limiter
         long now = System.currentTimeMillis();
-        int delay = randomizeCPS.getBoolean() ?
+        long delay = randomizeCPS.getBoolean() ?
             AntiDetection.getRandomizedDelay(50, 110) :
             AntiDetection.getRandomizedDelay(80, 100);
 
