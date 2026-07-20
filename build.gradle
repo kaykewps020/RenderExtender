@@ -3,7 +3,6 @@ buildscript {
         mavenCentral()
         maven { url = "https://files.minecraftforge.net/maven" }
         maven { url = "https://repo.spongepowered.org/maven" }
-        maven { url = "https://jitpack.io" }
     }
     dependencies {
         classpath 'net.minecraftforge.gradle:ForgeGradle:1.2-SNAPSHOT'
@@ -29,27 +28,11 @@ repositories {
     mavenCentral()
 }
 
-configurations {
-    shade
-    compile.extendsFrom shade
-}
-
 dependencies {
-    shade('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
-        exclude module: 'guava'
-        exclude module: 'commons-io'
-        exclude module: 'gson'
-        exclude module: 'launchwrapper'
-        exclude module: 'commons-codec'
-    }
+    compile 'org.spongepowered:mixin:0.7.11-SNAPSHOT'
 }
 
 jar {
-    from configurations.shade.collect { it.isDirectory() ? it : zipTree(it) } {
-        exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.MF'
-        exclude '**/*.java'
-    }
-    
     manifest {
         attributes(
             'FMLCorePlugin': 'me.cheat.client.mixin.MixinLoader',
@@ -63,14 +46,10 @@ jar {
 }
 
 processResources {
-    inputs.property "version", project.version
-    inputs.property "mcversion", project.minecraft.version
-
     from(sourceSets.main.resources.srcDirs) {
         include 'mcmod.info'
         expand 'version': project.version, 'mcversion': project.minecraft.version
     }
-
     from(sourceSets.main.resources.srcDirs) {
         exclude 'mcmod.info'
     }
