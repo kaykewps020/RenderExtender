@@ -1,0 +1,41 @@
+name: Build RenderExtender 1.8.9 (Forge)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:  # Permite build manual pelo site do GitHub
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout código
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+
+      - name: 🔧 Gerar Gradle Wrapper (v4.4.1)
+        run: gradle wrapper --gradle-version 4.4.1
+
+      - name: 🔨 Buildar Mod
+        run: |
+          chmod +x gradlew
+          export GRADLE_OPTS="-Xmx2G -Dorg.gradle.jvmargs=-Xmx2G"
+          ./gradlew build --no-daemon
+
+      - name: 📦 Upload .jar (artefato)
+        uses: actions/upload-artifact@v4
+        with:
+          name: RenderExtender-Forge-1.8.9
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: 📋 Listar arquivos gerados
+        run: ls -lh build/libs/

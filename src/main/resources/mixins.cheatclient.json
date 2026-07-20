@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "minVersion": "0.7.11",
+  "package": "me.cheat.client.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "cheatclient.refmap.json",
+  "client": [
+    "MixinMinecraft",
+    "MixinEntityRenderer",
+    "MixinEntityPlayerSP",
+    "MixinNetworkManager",
+    "MixinRenderManager",
+    "MixinRenderLivingBase",
+    "MixinGuiIngame",
+    "MixinKeyBinding",
+    "MixinRenderGlobal",
+    "MixinEntityLivingBase"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,13 @@
+[{
+  "modid": "renderextender",
+  "name": "RenderExtender",
+  "description": "Advanced visual enhancement utility",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "authorList": ["RenderDev"],
+  "credits": "",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}]
