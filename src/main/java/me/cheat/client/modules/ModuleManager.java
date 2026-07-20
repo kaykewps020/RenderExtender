@@ -27,7 +27,7 @@ public class ModuleManager {
         // Movement
         register(new Velocity());
         register(new AutoSprint());
-        register(new Timer());
+        register(new TimerSpeed());
         register(new Blink());
 
         // Player

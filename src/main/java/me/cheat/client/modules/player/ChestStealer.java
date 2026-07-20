@@ -6,8 +6,10 @@ import me.cheat.client.utils.AntiDetection;
 import net.minecraft.client.gui.inventory.GuiChest;
 import net.minecraft.inventory.Container;
 import net.minecraft.inventory.ContainerChest;
+import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 
 /**
  * ChestStealer - Automatically takes all items from chests.
@@ -49,7 +51,17 @@ public class ChestStealer extends Module {
         if (!(container instanceof ContainerChest)) return;
 
         ContainerChest chestContainer = (ContainerChest) container;
-        int numRows = chestContainer.lowerChestInventory.getSizeInventory() / 9;
+        // Get lowerChestInventory via reflection (private field)
+        int totalSlots = 27; // default single chest
+        try {
+            IInventory lowerInv = ReflectionHelper.getPrivateValue(
+                ContainerChest.class, chestContainer, "lowerChestInventory", "field_75155_c"
+            );
+            totalSlots = lowerInv.getSizeInventory();
+        } catch (Exception e) {
+            // Fallback: assume 27 slots (single chest)
+        }
+        int numRows = totalSlots / 9;
         int totalSlots = numRows * 9;
 
         long now = System.currentTimeMillis();
