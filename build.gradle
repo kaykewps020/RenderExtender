@@ -5,11 +5,13 @@ buildscript {
         maven { url = "https://repo.spongepowered.org/maven" }
     }
     dependencies {
-        classpath 'net.minecraftforge.gradle:ForgeGradle:1.2-SNAPSHOT'
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.0-SNAPSHOT'
+        classpath 'org.spongepowered:mixingradle:0.4-SNAPSHOT'
     }
 }
 
-apply plugin: 'forge'
+apply plugin: 'net.minecraftforge.gradle.forge'
+apply plugin: 'org.spongepowered.mixin'
 
 version = "2.0"
 group = "me.cheat"
@@ -29,10 +31,24 @@ repositories {
 }
 
 dependencies {
-    compile 'org.spongepowered:mixin:0.7.11-SNAPSHOT'
+    compile('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
+        exclude module: 'guava'
+        exclude module: 'commons-io'
+        exclude module: 'gson'
+        exclude module: 'launchwrapper'
+        exclude module: 'commons-codec'
+    }
+}
+
+mixin {
+    add sourceSets.main, 'mixins.cheatclient.refmap.json'
 }
 
 jar {
+    from(configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }) {
+        exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.MF'
+    }
+    
     manifest {
         attributes(
             'FMLCorePlugin': 'me.cheat.client.mixin.MixinLoader',
@@ -46,6 +62,8 @@ jar {
 }
 
 processResources {
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
     from(sourceSets.main.resources.srcDirs) {
         include 'mcmod.info'
         expand 'version': project.version, 'mcversion': project.minecraft.version
