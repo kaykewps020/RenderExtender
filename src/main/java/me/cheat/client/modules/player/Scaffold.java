@@ -233,13 +233,21 @@ public class Scaffold extends Module {
         if (mc.thePlayer == null || mc.getNetHandler() == null) return;
 
         int currentSlot = mc.thePlayer.inventory.currentItem;
+        boolean swappedFromInventory = false;
+        int previousSlot = currentSlot;
 
+        // Handle hotbar slots (0-8): direct switch
         if (slot >= 0 && slot < 9 && slot != currentSlot) {
             mc.thePlayer.inventory.currentItem = slot;
             mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(slot));
-        } else if (slot >= 9) {
-            mc.playerController.windowClick(mc.thePlayer.inventoryContainer.windowId,
-                slot, currentSlot, 2, mc.thePlayer);
+        }
+        // Handle inventory slots (9+): quick-swap into current hotbar slot
+        else if (slot >= 9) {
+            mc.playerController.windowClick(
+                mc.thePlayer.inventoryContainer.windowId,
+                slot, currentSlot, 2, mc.thePlayer
+            );
+            swappedFromInventory = true;
         }
 
         Vec3 hitVec = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
@@ -259,9 +267,33 @@ public class Scaffold extends Module {
 
         blocksPlaced++;
 
-        if (slot >= 0 && slot < 9 && slot != currentSlot) {
-            mc.thePlayer.inventory.currentItem = currentSlot;
-            mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(currentSlot));
+        // Restore previous state
+        if (slot >= 0 && slot < 9 && slot != previousSlot) {
+            // Restore hotbar selection
+            mc.thePlayer.inventory.currentItem = previousSlot;
+            mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(previousSlot));
+        } else if (swappedFromInventory) {
+            // Swap item back from hotbar to inventory
+            // Find the block item we just placed from
+            int blockSlotInHotbar = -1;
+            ItemStack held = mc.thePlayer.getHeldItem();
+            if (held != null && isBlockItem(held)) {
+                // Find where this block originally was
+                for (int i = 9; i < 36; i++) {
+                    ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(i).getStack();
+                    if (stack != null && stack.getItem() == held.getItem() && stack.stackSize < held.stackSize + 5) {
+                        blockSlotInHotbar = i;
+                        break;
+                    }
+                }
+            }
+            // Swap back: move item from currentSlot back to original inventory slot
+            if (blockSlotInHotbar != -1) {
+                mc.playerController.windowClick(
+                    mc.thePlayer.inventoryContainer.windowId,
+                    blockSlotInHotbar, currentSlot, 2, mc.thePlayer
+                );
+            }
         }
     }
 

@@ -42,7 +42,6 @@ public class CheatClient {
 
         // Register event bus
         MinecraftForge.EVENT_BUS.register(this);
-        MinecraftForge.EVENT_BUS.register(new ModuleManager());
 
         System.out.println("[RenderExtender] Initialized successfully!");
     }
@@ -54,28 +53,24 @@ public class CheatClient {
 
     @SubscribeEvent
     public void onKeyInput(KeyInputEvent event) {
+        // GUI toggle
         if (guiKey.isPressed()) {
             ClickGUI.getInstance().toggle();
+            return;
         }
 
-        // Check module keybinds
-        if (mc.currentScreen == null) {
-            for (int key : new int[0]) {
-                if (Keyboard.getEventKeyState()) {
-                    ModuleManager.onKeyPress(Keyboard.getEventKey());
-                }
+        // Module keybinds - check directly via Keyboard events
+        if (mc.currentScreen == null && Keyboard.getEventKeyState()) {
+            int key = Keyboard.getEventKey();
+            if (key != 0) {
+                ModuleManager.onKeyPress(key);
             }
         }
     }
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && mc.thePlayer != null) {
-            // Check all keybinds every tick
-            if (Keyboard.getEventKeyState()) {
-                ModuleManager.onKeyPress(Keyboard.getEventKey());
-            }
-        }
+        // Empty - module ticks are handled in MixinMinecraft.runTick
     }
 
     public static boolean isGuiOpen() {

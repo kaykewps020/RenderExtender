@@ -1,10 +1,11 @@
 package me.cheat.client.modules;
 
 import me.cheat.client.modules.combat.*;
+import me.cheat.client.modules.movement.*;
 import me.cheat.client.modules.player.*;
+import me.cheat.client.modules.render.*;
 import me.cheat.client.utils.ConfigManager;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraft.client.Minecraft;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,10 +18,28 @@ public class ModuleManager {
         if (initialized) return;
         initialized = true;
 
+        // Combat
         register(new KillAura());
+        register(new SilentAim());
         register(new Reach());
         register(new HitBox());
+
+        // Movement
+        register(new Velocity());
+        register(new AutoSprint());
+        register(new Timer());
+        register(new Blink());
+
+        // Player
         register(new Scaffold());
+        register(new NoFall());
+        register(new ChestStealer());
+        register(new AutoArmor());
+
+        // Render
+        register(new HUD());
+        register(new Zoom());
+        register(new NoHurtCam());
 
         // Load saved states
         for (Module module : modules) {
@@ -79,10 +98,12 @@ public class ModuleManager {
         }
     }
 
-    @SubscribeEvent
-    public void onTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            // Tick-based updates for modules
+    public static void tickModules() {
+        if (Minecraft.getMinecraft().thePlayer == null || Minecraft.getMinecraft().theWorld == null) return;
+        for (Module module : modules) {
+            if (module.isEnabled()) {
+                module.onTick();
+            }
         }
     }
 }

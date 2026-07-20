@@ -56,6 +56,7 @@ public class Module {
 
     protected void onEnable() {}
     protected void onDisable() {}
+    public void onTick() {}
 
     public void addSetting(Setting setting) {
         settings.add(setting);

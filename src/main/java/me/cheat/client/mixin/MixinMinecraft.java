@@ -1,6 +1,8 @@
 package me.cheat.client.mixin;
 
 import me.cheat.client.CheatClient;
+import me.cheat.client.modules.ModuleManager;
+import me.cheat.client.ui.ClickGUI;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,11 +14,11 @@ public class MixinMinecraft {
 
     @Inject(method = "runTick", at = @At("HEAD"))
     private void onRunTick(CallbackInfo ci) {
-        // Called every tick
+        ModuleManager.tickModules();
     }
 
     @Inject(method = "clickMouse", at = @At("HEAD"), cancellable = true)
     private void onClickMouse(CallbackInfo ci) {
-        // Can intercept attacks
+        // Attack hook for reach/criticals
     }
 }

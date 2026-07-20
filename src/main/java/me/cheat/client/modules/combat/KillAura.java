@@ -10,10 +10,6 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.play.client.C02PacketUseEntity;
-import net.minecraft.network.play.client.C03PacketPlayer;
-import net.minecraft.network.play.client.C07PacketPlayerDigging;
-import net.minecraft.util.BlockPos;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -31,10 +27,7 @@ public class KillAura extends Module {
     private Entity target = null;
     private int ticksSinceLastAttack = 0;
     private float[] targetRotations = null;
-    private boolean rotating = false;
     private long lastAttackTime = 0;
-    private int cpsCounter = 0;
-    private long lastCpsReset = 0;
 
     private final Setting range = new Setting("Range", 4.2, 3.0, 6.0, 0.1);
     private final Setting cps = new Setting("CPS", 12, 1, 20, 1);
@@ -66,14 +59,14 @@ public class KillAura extends Module {
     protected void onEnable() {
         MinecraftForge.EVENT_BUS.register(this);
         target = null;
-        rotating = false;
+        targetRotations = null;
     }
 
     @Override
     protected void onDisable() {
         MinecraftForge.EVENT_BUS.unregister(this);
         target = null;
-        rotating = false;
+        targetRotations = null;
     }
 
     @SubscribeEvent
@@ -85,17 +78,19 @@ public class KillAura extends Module {
 
         target = findTarget();
         if (target == null) {
-            rotating = false;
+            targetRotations = null;
             return;
         }
 
         ticksSinceLastAttack++;
 
+        // Compute rotations to target
+        targetRotations = RotationUtils.getRotationsToEntity(target);
+
         if (targetRotations != null) {
             float[] rots = smoothRotation(targetRotations, (float)rotationSpeed.getDouble());
             mc.thePlayer.rotationYaw = rots[0];
             mc.thePlayer.rotationPitch = rots[1];
-            rotating = true;
         }
 
         if (shouldAttack()) {
@@ -190,7 +185,6 @@ public class KillAura extends Module {
         }
         if (!AntiDetection.checkCPS(maxCps)) return false;
 
-        // 1.8.9 attack cooldown is instant (no 1.9+ mechanic)
         if (System.currentTimeMillis() - lastAttackTime < 50) return false;
         if (System.currentTimeMillis() - lastAttackTime < AntiDetection.getRandomizedDelay(30, 80)) return false;
 
@@ -200,11 +194,10 @@ public class KillAura extends Module {
     private void attack(Entity entity) {
         if (mc.getNetHandler() == null) return;
 
-        // Send attack packet
         mc.getNetHandler().addToSendQueue(new C02PacketUseEntity(entity, C02PacketUseEntity.Action.ATTACK));
         mc.thePlayer.swingItem();
 
-        // Synchronize rotations
+        // Sync rotations after attack
         if (targetRotations != null) {
             mc.thePlayer.rotationYaw = targetRotations[0];
             mc.thePlayer.rotationPitch = targetRotations[1];
