@@ -1,0 +1,11 @@
+*.class
+*.jar
+!gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
+.gradle/
+build/
+run/
+out/
+.idea/
+*.iml
+.DS_Store

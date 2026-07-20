@@ -5,14 +5,14 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch:  # Permite build manual pelo site do GitHub
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 📥 Checkout código
+      - name: 📥 Checkout
         uses: actions/checkout@v4
 
       - name: ☕ Setup Java 8
@@ -20,22 +20,26 @@ jobs:
         with:
           java-version: '8'
           distribution: 'temurin'
+          java-package: jdk
 
-      - name: 🔧 Gerar Gradle Wrapper (v4.4.1)
-        run: gradle wrapper --gradle-version 4.4.1
+      - name: 🔧 Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 4.4.1
 
-      - name: 🔨 Buildar Mod
+      - name: 🔨 Gerar Wrapper e Buildar
         run: |
+          gradle wrapper --gradle-version 4.4.1
           chmod +x gradlew
-          export GRADLE_OPTS="-Xmx2G -Dorg.gradle.jvmargs=-Xmx2G"
-          ./gradlew build --no-daemon
+          export GRADLE_OPTS="-Xmx2G"
+          ./gradlew build --no-daemon --stacktrace
 
-      - name: 📦 Upload .jar (artefato)
+      - name: 📦 Upload .jar
         uses: actions/upload-artifact@v4
         with:
           name: RenderExtender-Forge-1.8.9
           path: build/libs/*.jar
           if-no-files-found: error
 
-      - name: 📋 Listar arquivos gerados
-        run: ls -lh build/libs/
+      - name: 📋 Listar
+        run: ls -lh build/libs/ || echo "build/libs not found"
