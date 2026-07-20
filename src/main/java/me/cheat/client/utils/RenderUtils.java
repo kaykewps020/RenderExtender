@@ -109,10 +109,10 @@ public class RenderUtils {
     public static void drawRoundedRect(double x, double y, double w, double h, double radius, int color) {
         drawRect(x + radius, y, w - radius * 2, h, color);
         drawRect(x, y + radius, w, h - radius * 2, color);
-        drawCircle(x + radius, y + radius, radius, 90, 180, color);
-        drawCircle(x + w - radius, y + radius, radius, 0, 90, color);
-        drawCircle(x + radius, y + h - radius, radius, 180, 270, color);
-        drawCircle(x + w - radius, y + h - radius, radius, 270, 360, color);
+        drawArc(x + radius, y + radius, radius, 90, 180, color);
+        drawArc(x + w - radius, y + radius, radius, 0, 90, color);
+        drawArc(x + radius, y + h - radius, radius, 180, 270, color);
+        drawArc(x + w - radius, y + h - radius, radius, 270, 360, color);
     }
 
     public static void drawOutlinedRect(double x, double y, double w, double h, int color, float lineWidth) {
