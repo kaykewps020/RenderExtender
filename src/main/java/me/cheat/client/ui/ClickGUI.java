@@ -14,16 +14,17 @@ import org.lwjgl.opengl.GL11;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
- * RadialClickGUI - CS:GO-style circular/radial menu with vector icons.
+ * RadialClickGUI - CS:GO-style circular menu with interactive sliders/toggles.
  *
- * Layout:
- *   - Center hub: client name + player head
- *   - Category ring: each category is a segment on the ring
- *   - Module nodes: when a category is selected, modules appear around it
- *   - All drawn with GL11 circles, arcs, gradients
+ * Controls:
+ *   Left-click on module node  = TOGGLE module on/off
+ *   Right-click on module node = expand/collapse settings
+ *   Left-click on setting      = interact (toggle bool, change mode)
+ *   Drag on slider track       = change integer/double value
+ *   Click center hub           = deselect category / close
+ *   ESC / X                    = close
  */
 public class ClickGUI extends GuiScreen {
     private static final ClickGUI INSTANCE = new ClickGUI();
@@ -44,17 +45,15 @@ public class ClickGUI extends GuiScreen {
     public static final int DISABLED_RED = 0xFFEF4444;
     public static final int ORANGE_ACCENT = 0xFFF59E0B;
 
-    // ─── Layout Constants ───────────────────────────────────
+    // ─── Layout ─────────────────────────────────────────────
     private static final double CENTER_RADIUS = 24;
     private static final double CATEGORY_RING_RADIUS = 90;
-    private static final double CATEGORY_SEGMENT_SIZE = 60; // degrees per category
     private static final double MODULE_RING_RADIUS = 150;
     private static final double MODULE_NODE_RADIUS = 6;
 
     // ─── State ──────────────────────────────────────────────
     private boolean initialized = false;
     private float openAnim = 0;
-    private float closeAnim = 0;
     private boolean closing = false;
 
     private int selectedCategory = -1;
@@ -62,15 +61,23 @@ public class ClickGUI extends GuiScreen {
     private int hoveredCategory = -1;
     private int hoveredModule = -1;
 
+    // Slider drag state
+    private boolean draggingSlider = false;
+    private Module.Setting dragSetting = null;
+    private double dragPanelX = 0;
+    private double dragPanelW = 0;
+
     private int centerX, centerY;
     private long openTime;
 
-    // Category data
-    private final List<CategoryData> categories = new ArrayList<>();
+    // Category/module cached positions for hit testing during drag
+    private final List<double[]> modulePositions = new ArrayList<>();
+
+    // ─── Data Classes ───────────────────────────────────────
 
     private static class CategoryData {
         Category category;
-        double angle; // center angle in degrees
+        double angle;
         float hoverAnim = 0;
         float selectAnim = 0;
         List<ModuleData> modules = new ArrayList<>();
@@ -82,8 +89,6 @@ public class ClickGUI extends GuiScreen {
         float hoverAnim = 0;
         float toggleAnim;
         boolean expanded = false;
-        List<Module.Setting> settings = new ArrayList<>();
-        int expandedHeight = 0;
 
         ModuleData(Module module, double angle) {
             this.module = module;
@@ -105,29 +110,28 @@ public class ClickGUI extends GuiScreen {
         if (!initialized) {
             categories.clear();
             Category[] cats = Category.values();
-            double startAngle = -90; // top
             double segSize = 360.0 / cats.length;
 
             for (int i = 0; i < cats.length; i++) {
                 CategoryData cd = new CategoryData();
                 cd.category = cats[i];
-                cd.angle = startAngle + segSize * i;
+                cd.angle = -90 + segSize * i;
 
                 List<Module> modules = ModuleManager.getModulesInCategory(cats[i]);
                 double modStart = cd.angle - segSize / 2 + 10;
                 double modSeg = (segSize - 20) / Math.max(1, modules.size());
                 for (int j = 0; j < modules.size(); j++) {
-                    ModuleData md = new ModuleData(modules.get(j), modStart + modSeg * j + modSeg / 2);
-                    for (Module.Setting s : modules.get(j).getSettings()) {
-                        md.settings.add(s);
-                    }
-                    cd.modules.add(md);
+                    cd.modules.add(new ModuleData(modules.get(j), modStart + modSeg * j + modSeg / 2));
                 }
                 categories.add(cd);
             }
             initialized = true;
         }
     }
+
+    // ═══════════════════════════════════════════════════════════
+    //  RENDERING
+    // ═══════════════════════════════════════════════════════════
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
@@ -153,15 +157,13 @@ public class ClickGUI extends GuiScreen {
         // Dark overlay
         drawRect(0, 0, width, height, RenderUtils.getColorWithAlpha(0x000000, (int)(200 * anim)));
 
-        // Enable GL state
         GlStateManager.enableBlend();
         GlStateManager.disableTexture2D();
 
-        // ─── Background rings ────────────────────────────────
         double scale = 0.6f + anim * 0.4f;
         double ringR = CATEGORY_RING_RADIUS * scale;
 
-        // Outer ambient glow
+        // Ambient glow
         RenderUtils.drawCircleGradient(centerX, centerY, ringR + 30,
             RenderUtils.getColorWithAlpha(0x000000, 0),
             RenderUtils.getColorWithAlpha(PURPLE_TERTIARY, (int)(40 * anim)));
@@ -170,7 +172,7 @@ public class ClickGUI extends GuiScreen {
         RenderUtils.drawCircleFilled(centerX, centerY, ringR + 4,
             RenderUtils.getColorWithAlpha(0x0A0514, (int)(180 * anim)));
 
-        // ─── Category segments ──────────────────────────────
+        // ─── Category Segments ──────────────────────────────
         hoveredCategory = -1;
         double segSize = 360.0 / categories.size();
 
@@ -179,54 +181,41 @@ public class ClickGUI extends GuiScreen {
             double startA = cd.angle - segSize / 2 + 1;
             double endA = cd.angle + segSize / 2 - 1;
 
-            // Hover detection
             boolean segHovered = isMouseInSector(mouseX, mouseY, centerX, centerY, ringR - 8, ringR + 8, startA, endA);
             if (segHovered) hoveredCategory = i;
 
-            // Animations
             cd.hoverAnim = lerpAnim(cd.hoverAnim, segHovered ? 1 : 0, 0.12f);
             cd.selectAnim = lerpAnim(cd.selectAnim, (selectedCategory == i) ? 1 : 0, 0.1f);
 
-            // Draw segment
             int segColor = RenderUtils.lerpColor(
                 RenderUtils.getColorWithAlpha(PURPLE_TERTIARY, (int)(120 * anim)),
                 RenderUtils.getColorWithAlpha(PURPLE_PRIMARY, (int)(255 * anim)),
-                cd.hoverAnim
-            );
+                cd.hoverAnim);
             segColor = RenderUtils.lerpColor(segColor,
                 RenderUtils.getColorWithAlpha(PURPLE_SECONDARY, (int)(255 * anim)),
                 cd.selectAnim);
 
             RenderUtils.drawArc(centerX, centerY, ringR, startA, endA, segColor);
-
-            // Segment border
             RenderUtils.drawCirclePartial(centerX, centerY, ringR, 1.5f, startA, endA,
                 RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(180 * anim * cd.hoverAnim + 80 * anim)));
 
-            // Category icon at midpoint
+            // Icon
             double iconAngle = Math.toRadians(cd.angle);
-            double iconDist = ringR;
-            double iconX = centerX + Math.cos(iconAngle) * iconDist;
-            double iconY = centerY + Math.sin(iconAngle) * iconDist;
-
+            double iconX = centerX + Math.cos(iconAngle) * ringR;
+            double iconY = centerY + Math.sin(iconAngle) * ringR;
             drawCategoryIcon(cd.category, iconX, iconY, anim, cd);
 
-            // Category name
+            // Label
             double labelDist = ringR + 22;
             double labelX = centerX + Math.cos(iconAngle) * labelDist;
             double labelY = centerY + Math.sin(iconAngle) * labelDist;
             String name = cd.category.getName().toUpperCase();
-            int nameW = mc.fontRendererObj.getStringWidth(name);
             int nameColor = RenderUtils.lerpColor(
                 RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(200 * anim)),
                 RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(255 * anim)),
-                cd.hoverAnim
-            );
+                cd.hoverAnim);
             RenderUtils.drawCenteredText(name, labelX, labelY - 4, nameColor, true);
-
-            // Module count
-            String count = cd.modules.size() + "";
-            RenderUtils.drawCenteredText(count, labelX, labelY + 7,
+            RenderUtils.drawCenteredText(String.valueOf(cd.modules.size()), labelX, labelY + 7,
                 RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(150 * anim)), false);
         }
 
@@ -235,14 +224,12 @@ public class ClickGUI extends GuiScreen {
             RenderUtils.getColorWithAlpha(0x0A0514, (int)(200 * anim)));
         RenderUtils.drawCircleOutline(centerX, centerY, CENTER_RADIUS + 2, 2.0f,
             RenderUtils.getColorWithAlpha(PURPLE_PRIMARY, (int)(220 * anim)));
-
-        // Center text
         RenderUtils.drawCenteredText("RE", centerX, centerY - 8,
             RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(255 * anim)), true);
         RenderUtils.drawCenteredText("v2.0", centerX, centerY + 3,
             RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(180 * anim)), false);
 
-        // ─── Selected category modules ──────────────────────
+        // ─── Selected Category Modules ──────────────────────
         if (selectedCategory >= 0 && selectedCategory < categories.size()) {
             categorySelectAnim = Math.min(1.0f, categorySelectAnim + partialTicks * 0.1f);
             drawModules(categories.get(selectedCategory), mouseX, mouseY, partialTicks, anim);
@@ -265,8 +252,11 @@ public class ClickGUI extends GuiScreen {
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
 
+    // ─── Module Nodes + Settings Panel ──────────────────────
+
     private void drawModules(CategoryData cat, int mouseX, int mouseY, float partialTicks, float anim) {
-        double modAngleSpread = 80; // degrees spread for modules
+        modulePositions.clear();
+        double modAngleSpread = 80;
         double modStartAngle = -90 - modAngleSpread / 2;
         double modStep = modAngleSpread / Math.max(1, cat.modules.size() - 1);
         if (cat.modules.size() == 1) modStep = 0;
@@ -284,51 +274,44 @@ public class ClickGUI extends GuiScreen {
             double modX = centerX + Math.cos(modAngleRad) * modDist;
             double modY = centerY + Math.sin(modAngleRad) * modDist;
 
+            modulePositions.add(new double[]{modX, modY, i});
+
             // Hover
             double distToMouse = Math.sqrt(Math.pow(mouseX - modX, 2) + Math.pow(mouseY - modY, 2));
             boolean hovered = distToMouse < MODULE_NODE_RADIUS + 6;
             if (hovered) hoveredModule = i;
             md.hoverAnim = lerpAnim(md.hoverAnim, hovered ? 1 : 0, 0.15f);
-
-            // Toggle animation
             md.toggleAnim = lerpAnim(md.toggleAnim, md.module.isEnabled() ? 1 : 0, 0.1f);
 
-            // Glow for enabled modules
+            // Glow
             if (md.module.isEnabled()) {
                 RenderUtils.drawGlow(modX, modY, MODULE_NODE_RADIUS + 8, PURPLE_PRIMARY, 4);
             }
 
-            // Node background
+            // Node
             int nodeColor = RenderUtils.lerpColor(
                 RenderUtils.getColorWithAlpha(BG_DARK, (int)(220 * anim)),
                 RenderUtils.getColorWithAlpha(PURPLE_PRIMARY, (int)(255 * anim)),
-                md.toggleAnim
-            );
+                md.toggleAnim);
             nodeColor = RenderUtils.lerpColor(nodeColor,
                 RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(255 * anim)),
                 md.hoverAnim);
-
             RenderUtils.drawCircleFilled(modX, modY, MODULE_NODE_RADIUS + md.hoverAnim * 3, nodeColor);
-
-            // Inner dot
             RenderUtils.drawCircleFilled(modX, modY, 3,
                 RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(200 * anim)));
 
-            // Module name label
+            // Label
             String mName = md.module.getName().toUpperCase();
-            int nameW = mc.fontRendererObj.getStringWidth(mName);
             int labelColor = RenderUtils.lerpColor(
                 RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(200 * anim)),
                 RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(255 * anim)),
-                md.hoverAnim
-            );
+                md.hoverAnim);
             labelColor = RenderUtils.lerpColor(labelColor,
                 RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(255 * anim)),
                 md.toggleAnim);
-
             RenderUtils.drawCenteredText(mName, modX, modY + MODULE_NODE_RADIUS + 8, labelColor, true);
 
-            // Keybind indicator
+            // Keybind
             if (md.module.getKeyBind() != 0) {
                 String kb = Keyboard.getKeyName(md.module.getKeyBind());
                 if (kb != null) {
@@ -337,53 +320,140 @@ public class ClickGUI extends GuiScreen {
                 }
             }
 
-            // Expanded settings panel
-            if (md.expanded && !md.settings.isEmpty()) {
-                double panelX = modX - 60;
-                double panelY = modY + MODULE_NODE_RADIUS + 20;
-                double panelW = 120;
-                double panelH = md.settings.size() * 16 + 8;
+            // ─── Expanded Settings Panel ────────────────────
+            if (md.expanded) {
+                List<Module.Setting> settings = md.module.getSettings();
+                if (!settings.isEmpty()) {
+                    double panelW = 130;
+                    double panelH = settings.size() * 22 + 10;
+                    double panelX = modX - panelW / 2;
+                    double panelY = modY + MODULE_NODE_RADIUS + 22;
 
-                RenderUtils.drawRoundedRect(panelX, panelY, panelW, panelH, 6,
-                    RenderUtils.getColorWithAlpha(BG_DARK, (int)(230 * anim)));
-                RenderUtils.drawCircleOutline(panelX + panelW / 2, panelY + panelH / 2,
-                    Math.max(panelW, panelH) / 2, 0.5f,
-                    RenderUtils.getColorWithAlpha(PURPLE_TERTIARY, (int)(100 * anim)));
+                    // Panel background
+                    RenderUtils.drawRoundedRect(panelX - 2, panelY - 2, panelW + 4, panelH + 4, 8,
+                        RenderUtils.getColorWithAlpha(BG_DARK, (int)(240 * anim)));
+                    RenderUtils.drawCircleOutline(panelX + panelW / 2, panelY + panelH / 2,
+                        Math.max(panelW, panelH) / 2 + 4, 1.0f,
+                        RenderUtils.getColorWithAlpha(PURPLE_TERTIARY, (int)(80 * anim)));
 
-                for (int s = 0; s < md.settings.size(); s++) {
-                    Module.Setting setting = md.settings.get(s);
-                    double sy = panelY + 4 + s * 16;
+                    for (int s = 0; s < settings.size(); s++) {
+                        Module.Setting setting = settings.get(s);
+                        double sy = panelY + 5 + s * 22;
 
-                    String sName = setting.getName();
-                    RenderUtils.drawText(sName, panelX + 6, sy,
-                        RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(200 * anim)), false);
-
-                    switch (setting.getType()) {
-                        case BOOLEAN:
-                            String onOff = setting.getBoolean() ? "ON" : "OFF";
-                            int onOffColor = setting.getBoolean() ? ENABLED_GREEN : DISABLED_RED;
-                            RenderUtils.drawText(onOff, panelX + panelW - mc.fontRendererObj.getStringWidth(onOff) - 6, sy,
-                                RenderUtils.getColorWithAlpha(onOffColor, (int)(220 * anim)), false);
-                            break;
-                        case INTEGER:
-                        case DOUBLE:
-                            String val = setting.getType() == Module.Setting.Type.INTEGER ?
-                                String.valueOf(setting.getInt()) : String.format("%.1f", setting.getDouble());
-                            RenderUtils.drawText(val, panelX + panelW - mc.fontRendererObj.getStringWidth(val) - 6, sy,
-                                RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(220 * anim)), false);
-                            break;
-                        case MODE:
-                            String mode = setting.getMode();
-                            RenderUtils.drawText(mode, panelX + panelW - mc.fontRendererObj.getStringWidth(mode) - 6, sy,
-                                RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(220 * anim)), false);
-                            break;
+                        switch (setting.getType()) {
+                            case BOOLEAN:
+                                drawBooleanSetting(setting, panelX, sy, panelW, anim, mouseX, mouseY);
+                                break;
+                            case INTEGER:
+                                drawSliderSetting(setting, panelX, sy, panelW, anim, true);
+                                break;
+                            case DOUBLE:
+                                drawSliderSetting(setting, panelX, sy, panelW, anim, false);
+                                break;
+                            case MODE:
+                                drawModeSetting(setting, panelX, sy, panelW, anim);
+                                break;
+                        }
                     }
                 }
             }
         }
     }
 
-    // ─── Category Icons (Vector/SVG-style via GL11) ─────────
+    // ─── Setting Renderers ──────────────────────────────────
+
+    private void drawBooleanSetting(Module.Setting setting, double x, double y, double w, float anim, int mouseX, int mouseY) {
+        // Label
+        RenderUtils.drawText(setting.getName(), x + 4, y + 2,
+            RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(220 * anim)), false);
+
+        // Toggle switch
+        boolean val = setting.getBoolean();
+        double swX = x + w - 32;
+        double swY = y + 1;
+
+        int bgColor = val ?
+            RenderUtils.getColorWithAlpha(ENABLED_GREEN, (int)(220 * anim)) :
+            RenderUtils.getColorWithAlpha(0xFF3A3555, (int)(220 * anim));
+        RenderUtils.drawRoundedRect(swX, swY, 28, 12, 6, bgColor);
+
+        // Knob
+        double knobX = val ? swX + 14 : swX + 2;
+        RenderUtils.drawCircleFilled(knobX + 4, swY + 6, 4.5,
+            RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(240 * anim)));
+
+        // ON/OFF text
+        String txt = val ? "ON" : "OFF";
+        int txtColor = val ? ENABLED_GREEN : DISABLED_RED;
+        RenderUtils.drawText(txt, swX - mc.fontRendererObj.getStringWidth(txt) - 4, y + 2,
+            RenderUtils.getColorWithAlpha(txtColor, (int)(200 * anim)), false);
+    }
+
+    private void drawSliderSetting(Module.Setting setting, double x, double y, double w, float anim, boolean isInt) {
+        // Label
+        RenderUtils.drawText(setting.getName(), x + 4, y,
+            RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(220 * anim)), false);
+
+        // Value
+        double val = isInt ? setting.getInt() : setting.getDouble();
+        String valStr = isInt ? String.valueOf((int) val) : String.format("%.1f", val);
+        int valW = mc.fontRendererObj.getStringWidth(valStr);
+        RenderUtils.drawText(valStr, x + w - valW - 4, y,
+            RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(240 * anim)), false);
+
+        // Track background
+        double trackY = y + 12;
+        double trackH = 4;
+        RenderUtils.drawRoundedRect(x + 4, trackY, w - 8, trackH, 2,
+            RenderUtils.getColorWithAlpha(0xFF1A1533, (int)(220 * anim)));
+
+        // Filled portion
+        double min = setting.getMin();
+        double max = setting.getMax();
+        double progress = Math.max(0, Math.min(1, (val - min) / (max - min)));
+        double fillW = (w - 8) * progress;
+        if (fillW > 1) {
+            RenderUtils.drawRoundedRect(x + 4, trackY, fillW, trackH, 2,
+                RenderUtils.getColorWithAlpha(PURPLE_PRIMARY, (int)(240 * anim)));
+        }
+
+        // Knob
+        double knobX = x + 4 + fillW - 4;
+        RenderUtils.drawCircleFilled(knobX + 4, trackY + 2, 5,
+            RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(255 * anim)));
+        RenderUtils.drawCircleFilled(knobX + 4, trackY + 2, 2.5,
+            RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(255 * anim)));
+    }
+
+    private void drawModeSetting(Module.Setting setting, double x, double y, double w, float anim) {
+        // Label
+        RenderUtils.drawText(setting.getName(), x + 4, y + 2,
+            RenderUtils.getColorWithAlpha(TEXT_DIM, (int)(220 * anim)), false);
+
+        String mode = setting.getMode();
+        int modeW = mc.fontRendererObj.getStringWidth(mode);
+
+        // Mode box background
+        double boxX = x + w - modeW - 16;
+        RenderUtils.drawRoundedRect(boxX, y, modeW + 14, 14, 4,
+            RenderUtils.getColorWithAlpha(BG_LIGHT, (int)(180 * anim)));
+
+        // < arrow
+        RenderUtils.drawText("<", boxX + 1, y + 2,
+            RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(200 * anim)), false);
+
+        // Mode text
+        RenderUtils.drawText(mode, boxX + 10, y + 2,
+            RenderUtils.getColorWithAlpha(TEXT_MAIN, (int)(240 * anim)), false);
+
+        // > arrow
+        RenderUtils.drawText(">", boxX + modeW + 7, y + 2,
+            RenderUtils.getColorWithAlpha(PURPLE_ACCENT, (int)(200 * anim)), false);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  CATEGORY ICONS (Vector/SVG-style)
+    // ═══════════════════════════════════════════════════════════
 
     private void drawCategoryIcon(Category cat, double cx, double cy, float anim, CategoryData cd) {
         double iconScale = 0.7 + cd.hoverAnim * 0.3;
@@ -391,37 +461,31 @@ public class ClickGUI extends GuiScreen {
         int color = RenderUtils.lerpColor(
             RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(220 * anim)),
             RenderUtils.getColorWithAlpha(TEXT_BRIGHT, (int)(255 * anim)),
-            cd.hoverAnim
-        );
+            cd.hoverAnim);
 
         GlStateManager.enableBlend();
         GlStateManager.disableTexture2D();
 
         switch (cat) {
             case COMBAT:
-                // Crosshair icon
                 RenderUtils.drawLine2D(cx - s, cy, cx + s, cy, color, 1.5f);
                 RenderUtils.drawLine2D(cx, cy - s, cx, cy + s, color, 1.5f);
                 RenderUtils.drawCircleOutline(cx, cy, s * 0.7, 1.0f, color);
                 break;
             case PLAYER:
-                // Person icon (head + body)
                 RenderUtils.drawCircleFilled(cx, cy - s * 0.3, s * 0.35, color);
                 RenderUtils.drawRoundedRect(cx - s * 0.4, cy + s * 0.1, s * 0.8, s * 0.7, 2, color);
                 break;
             case MOVEMENT:
-                // Arrow up (speed/movement)
                 RenderUtils.drawLine2D(cx, cy - s, cx, cy + s * 0.4, color, 1.5f);
                 RenderUtils.drawLine2D(cx - s * 0.5, cy + s * 0.8, cx, cy + s * 0.4, color, 1.5f);
                 RenderUtils.drawLine2D(cx + s * 0.5, cy + s * 0.8, cx, cy + s * 0.4, color, 1.5f);
                 break;
             case RENDER:
-                // Eye icon
                 RenderUtils.drawCircleOutline(cx, cy, s * 0.4, 1.5f, color);
                 RenderUtils.drawCircleFilled(cx, cy, s * 0.2, color);
                 break;
             case MISC:
-                // Gear icon (simplified)
                 RenderUtils.drawCircleOutline(cx, cy, s * 0.6, 1.5f, color);
                 for (int i = 0; i < 6; i++) {
                     double angle = Math.toRadians(i * 60);
@@ -438,13 +502,15 @@ public class ClickGUI extends GuiScreen {
         GlStateManager.disableBlend();
     }
 
-    // ─── Input Handling ─────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+    //  INPUT HANDLING
+    // ═══════════════════════════════════════════════════════════
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
         if (closing) return;
 
-        // Click on center hub = deselect
+        // Center hub click
         double distToCenter = Math.sqrt(Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2));
         if (distToCenter < CENTER_RADIUS) {
             if (selectedCategory >= 0) {
@@ -455,100 +521,147 @@ public class ClickGUI extends GuiScreen {
             return;
         }
 
-        // Click on category
+        // Category click
         if (hoveredCategory >= 0) {
-            if (selectedCategory == hoveredCategory) {
-                selectedCategory = -1; // deselect
-            } else {
-                selectedCategory = hoveredCategory;
-                // Reset expanded states
+            selectedCategory = (selectedCategory == hoveredCategory) ? -1 : hoveredCategory;
+            if (selectedCategory >= 0) {
                 for (ModuleData md : categories.get(selectedCategory).modules) {
                     md.expanded = false;
                 }
             }
+            draggingSlider = false;
             return;
         }
 
-        // Click on module
+        // Module click
         if (hoveredModule >= 0 && selectedCategory >= 0) {
             ModuleData md = categories.get(selectedCategory).modules.get(hoveredModule);
-
             if (mouseButton == 0) {
-                // LEFT CLICK = TOGGLE (always!)
                 md.module.toggle();
                 return;
             }
             if (mouseButton == 1) {
-                // RIGHT CLICK = expand settings
                 md.expanded = !md.expanded;
+                draggingSlider = false;
                 return;
             }
         }
 
-        // Click on setting in expanded panel
+        // Setting click in expanded panels
         if (selectedCategory >= 0) {
-            for (ModuleData md : categories.get(selectedCategory).modules) {
-                if (!md.expanded) continue;
-                double modAngleRad = Math.toRadians(md.angle);
-                double modDist = MODULE_RING_RADIUS * categorySelectAnim;
-                double modX = centerX + Math.cos(modAngleRad) * modDist;
-                double modY = centerY + Math.sin(modAngleRad) * modDist;
-                double panelX = modX - 60;
-                double panelY = modY + MODULE_NODE_RADIUS + 20;
-
-                for (int s = 0; s < md.settings.size(); s++) {
-                    Module.Setting setting = md.settings.get(s);
-                    double sy = panelY + 4 + s * 16;
-                    if (mouseX >= panelX && mouseX <= panelX + 120 && mouseY >= sy && mouseY <= sy + 14) {
-                        handleSettingClick(setting, mouseX, panelX, panelY, 120);
-                        return;
-                    }
-                }
-            }
+            if (handleSettingClickAt(mouseX, mouseY, mouseButton)) return;
         }
 
         super.mouseClicked(mouseX, mouseY, mouseButton);
     }
 
-    private void handleSettingClick(Module.Setting setting, int mouseX, double panelX, double panelY, int panelW) {
-        switch (setting.getType()) {
-            case BOOLEAN:
-                setting.setValue(!setting.getBoolean());
-                break;
-            case MODE:
-                List<String> opts = setting.getOptions();
-                if (opts != null && !opts.isEmpty()) {
-                    int idx = opts.indexOf(setting.getMode());
-                    // Clicking left half = prev, right half = next
-                    if (mouseX < panelX + panelW / 2) {
-                        idx = (idx - 1 + opts.size()) % opts.size();
-                    } else {
-                        idx = (idx + 1) % opts.size();
-                    }
-                    setting.setValue(opts.get(idx));
+    @Override
+    protected void mouseClickMove(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick) {
+        if (draggingSlider && dragSetting != null) {
+            updateSliderFromMouse(mouseX);
+            return;
+        }
+        super.mouseClickMove(mouseX, mouseY, clickedMouseButton, timeSinceLastClick);
+    }
+
+    @Override
+    protected void mouseReleased(int mouseX, int mouseY, int state) {
+        draggingSlider = false;
+        dragSetting = null;
+        super.mouseReleased(mouseX, mouseY, state);
+    }
+
+    private boolean handleSettingClickAt(int mouseX, int mouseY, int mouseButton) {
+        for (ModuleData md : categories.get(selectedCategory).modules) {
+            if (!md.expanded) continue;
+            List<Module.Setting> settings = md.module.getSettings();
+            if (settings.isEmpty()) continue;
+
+            double modAngleRad = Math.toRadians(md.angle);
+            double modDist = MODULE_RING_RADIUS * categorySelectAnim;
+            double modX = centerX + Math.cos(modAngleRad) * modDist;
+            double modY = centerY + Math.sin(modAngleRad) * modDist;
+
+            double panelW = 130;
+            double panelX = modX - panelW / 2;
+            double panelY = modY + MODULE_NODE_RADIUS + 22;
+
+            for (int s = 0; s < settings.size(); s++) {
+                Module.Setting setting = settings.get(s);
+                double sy = panelY + 5 + s * 22;
+
+                switch (setting.getType()) {
+                    case BOOLEAN:
+                        // Click on toggle switch area
+                        double swX = panelX + panelW - 32;
+                        if (mouseX >= swX - 40 && mouseX <= swX + 30 && mouseY >= sy && mouseY <= sy + 14) {
+                            setting.setValue(!setting.getBoolean());
+                            return true;
+                        }
+                        break;
+
+                    case INTEGER:
+                    case DOUBLE:
+                        // Click on slider track starts drag
+                        double trackY = sy + 12;
+                        if (mouseX >= panelX + 4 && mouseX <= panelX + panelW - 4 &&
+                            mouseY >= trackY - 4 && mouseY <= trackY + 10) {
+                            draggingSlider = true;
+                            dragSetting = setting;
+                            dragPanelX = panelX + 4;
+                            dragPanelW = panelW - 8;
+                            updateSliderFromMouse(mouseX);
+                            return true;
+                        }
+                        break;
+
+                    case MODE:
+                        // Click on mode box - left half = prev, right half = next
+                        int modeW = mc.fontRendererObj.getStringWidth(setting.getMode());
+                        double boxX = panelX + panelW - modeW - 16;
+                        if (mouseX >= boxX && mouseX <= boxX + modeW + 14 && mouseY >= sy && mouseY <= sy + 14) {
+                            List<String> opts = setting.getOptions();
+                            if (opts != null && !opts.isEmpty()) {
+                                int idx = opts.indexOf(setting.getMode());
+                                if (mouseX < boxX + (modeW + 14) / 2) {
+                                    idx = (idx - 1 + opts.size()) % opts.size();
+                                } else {
+                                    idx = (idx + 1) % opts.size();
+                                }
+                                setting.setValue(opts.get(idx));
+                            }
+                            return true;
+                        }
+                        break;
                 }
-                break;
-            case INTEGER:
-            case DOUBLE:
-                double min = setting.getMin();
-                double max = setting.getMax();
-                double progress = Math.max(0, Math.min(1, (mouseX - panelX) / (double) panelW));
-                double newVal = min + (max - min) * progress;
-                double step = setting.getStep();
-                newVal = Math.round(newVal / step) * step;
-                if (setting.getType() == Module.Setting.Type.INTEGER) {
-                    setting.setValue((int) Math.max(min, Math.min(max, newVal)));
-                } else {
-                    setting.setValue(Math.max(min, Math.min(max, newVal)));
-                }
-                break;
+            }
+        }
+        return false;
+    }
+
+    private void updateSliderFromMouse(int mouseX) {
+        if (dragSetting == null) return;
+        double progress = Math.max(0, Math.min(1, (mouseX - dragPanelX) / dragPanelW));
+        double min = dragSetting.getMin();
+        double max = dragSetting.getMax();
+        double step = dragSetting.getStep();
+        double newVal = min + (max - min) * progress;
+        newVal = Math.round(newVal / step) * step;
+        newVal = Math.max(min, Math.min(max, newVal));
+
+        if (dragSetting.getType() == Module.Setting.Type.INTEGER) {
+            dragSetting.setValue((int) newVal);
+        } else {
+            dragSetting.setValue(newVal);
         }
     }
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
         if (keyCode == Keyboard.KEY_ESCAPE || keyCode == Keyboard.KEY_X) {
-            if (selectedCategory >= 0) {
+            if (draggingSlider) {
+                draggingSlider = false;
+            } else if (selectedCategory >= 0) {
                 selectedCategory = -1;
             } else {
                 closing = true;
@@ -566,6 +679,7 @@ public class ClickGUI extends GuiScreen {
         initialized = false;
         selectedCategory = -1;
         openAnim = 0;
+        draggingSlider = false;
     }
 
     public void open() {
@@ -582,13 +696,12 @@ public class ClickGUI extends GuiScreen {
         }
     }
 
-    // ─── Math Helpers ───────────────────────────────────────
+    // ─── Helpers ────────────────────────────────────────────
 
     private boolean isMouseInSector(int mx, int my, double cx, double cy, double innerR, double outerR, double startDeg, double endDeg) {
         double dx = mx - cx, dy = my - cy;
         double dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < innerR || dist > outerR) return false;
-
         double angle = Math.toDegrees(Math.atan2(dy, dx));
         return angle >= startDeg && angle <= endDeg;
     }
