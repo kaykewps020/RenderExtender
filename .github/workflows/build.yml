@@ -11,10 +11,24 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '8'
+      - name: Pre-download problematic dependencies
+        run: |
+          mkdir -p ~/.gradle/caches/modules-2/files-2.1/tv.twitch/twitch-external-platform/4.5
+          curl -sL "https://libraries.minecraft.net/tv/twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-windows-32.jar" \
+            -o ~/.gradle/caches/modules-2/files-2.1/tv.twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-windows-32.jar
+          curl -sL "https://libraries.minecraft.net/tv/twitch/twitch-external-platform/4.5/twitch-external-platform-4.5.jar" \
+            -o ~/.gradle/caches/modules-2/files-2.1/tv.twitch/twitch-external-platform/4.5/twitch-external-platform-4.5.jar
+          curl -sL "https://libraries.minecraft.net/tv/twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-windows-64.jar" \
+            -o ~/.gradle/caches/modules-2/files-2.1/tv.twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-windows-64.jar
+          curl -sL "https://libraries.minecraft.net/tv/twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-osx.jar" \
+            -o ~/.gradle/caches/modules-2/files-2.1/tv.twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-osx.jar
+          curl -sL "https://libraries.minecraft.net/tv/twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-linux.jar" \
+            -o ~/.gradle/caches/modules-2/files-2.1/tv.twitch/twitch-external-platform/4.5/twitch-external-platform-4.5-natives-linux.jar
+          echo "Pre-downloaded Twitch dependencies"
       - name: Build
         run: |
           chmod +x gradlew
-          ./gradlew build
+          ./gradlew build --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: RenderExtender-1.8.9
