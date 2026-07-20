@@ -9,12 +9,10 @@
     "MixinEntityRenderer",
     "MixinEntityPlayerSP",
     "MixinNetworkManager",
-    "MixinRenderManager",
     "MixinRenderLivingBase",
     "MixinGuiIngame",
     "MixinKeyBinding",
-    "MixinRenderGlobal",
-    "MixinEntityLivingBase"
+    "MixinRenderGlobal"
   ],
   "injectors": {
     "defaultRequire": 1
