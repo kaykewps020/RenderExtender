@@ -62,7 +62,6 @@ public class ChestStealer extends Module {
             // Fallback: assume 27 slots (single chest)
         }
         int numRows = totalSlots / 9;
-        int totalSlots = numRows * 9;
 
         long now = System.currentTimeMillis();
         long effectiveDelay = delay.getInt();
