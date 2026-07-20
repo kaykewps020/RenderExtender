@@ -27,7 +27,7 @@ public class Zoom extends Module {
         // Zoom is applied in MixinEntityRenderer.getFOVModifier
         // This just tracks smooth interpolation
         if (smooth.getBoolean()) {
-            float targetZoom = zoomLevel.getDouble();
+            float targetZoom = (float) zoomLevel.getDouble();
             float diff = targetZoom - currentZoom;
             if (Math.abs(diff) > 0.01f) {
                 currentZoom += diff * zoomSpeed.getDouble();

@@ -49,11 +49,11 @@ public class ChestStealer extends Module {
         if (!(container instanceof ContainerChest)) return;
 
         ContainerChest chestContainer = (ContainerChest) container;
-        int numRows = chestContainer.getNumRows();
+        int numRows = chestContainer.lowerChestInventory.getSizeInventory() / 9;
         int totalSlots = numRows * 9;
 
         long now = System.currentTimeMillis();
-        long effectiveDelay = delay.getLong();
+        long effectiveDelay = delay.getInt();
         if (randomize.getBoolean()) {
             effectiveDelay += AntiDetection.getRandomizedDelay(-20, 40);
         }

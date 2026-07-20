@@ -30,7 +30,7 @@ public class AutoArmor extends Module {
         if (mc.currentScreen != null && !(mc.currentScreen instanceof GuiInventory)) return;
 
         long now = System.currentTimeMillis();
-        long effectiveDelay = delay.getLong();
+        long effectiveDelay = delay.getInt();
         if (randomize.getBoolean()) {
             effectiveDelay += AntiDetection.getRandomizedDelay(-10, 20);
         }
