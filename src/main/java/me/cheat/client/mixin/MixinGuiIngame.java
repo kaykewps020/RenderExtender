@@ -10,12 +10,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MixinGuiIngame {
 
     @Inject(method = "renderGameOverlay", at = @At("HEAD"))
-    private void onRenderOverlayPre(float partialTicks, boolean hasScreen, int mouseX, int mouseY, CallbackInfo ci) {
+    private void onRenderOverlayPre(float partialTicks, CallbackInfo ci) {
         // Pre-HUD
     }
 
     @Inject(method = "renderGameOverlay", at = @At("TAIL"))
-    private void onRenderOverlayPost(float partialTicks, boolean hasScreen, int mouseX, int mouseY, CallbackInfo ci) {
+    private void onRenderOverlayPost(float partialTicks, CallbackInfo ci) {
         // Post-HUD
     }
 }
