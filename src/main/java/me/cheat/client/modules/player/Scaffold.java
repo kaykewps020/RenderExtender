@@ -4,14 +4,21 @@ import me.cheat.client.modules.Category;
 import me.cheat.client.modules.Module;
 import me.cheat.client.utils.AntiDetection;
 import me.cheat.client.utils.RotationUtils;
-import net.minecraft.block.*;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockFire;
+import net.minecraft.block.BlockLiquid;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.GameSettings;
 import net.minecraft.entity.player.InventoryPlayer;
-import net.minecraft.item.*;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemBlock;
+import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.network.play.client.C09PacketHeldItemChange;
-import net.minecraft.util.*;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -64,8 +71,8 @@ public class Scaffold extends Module {
     protected void onDisable() {
         MinecraftForge.EVENT_BUS.unregister(this);
         if (mc.thePlayer != null) {
-            mc.gameSettings.keyBindSneak.setPressed(false);
-            mc.gameSettings.keyBindSprint.setPressed(false);
+            mc.gameSettings.keyBindSneak.pressed = false;
+            mc.gameSettings.keyBindSprint.pressed = false;
         }
         targetBlock = null;
     }
@@ -154,7 +161,7 @@ public class Scaffold extends Module {
 
     private boolean canPlaceOn(BlockPos pos) {
         if (mc.theWorld == null) return false;
-        BlockState state = mc.theWorld.getBlockState(pos);
+        IBlockState state = mc.theWorld.getBlockState(pos);
         Block block = state.getBlock();
         return !block.isAir(mc.theWorld, pos) && block.isFullBlock() &&
                !(block instanceof BlockLiquid) && !(block instanceof BlockFire);
@@ -192,12 +199,12 @@ public class Scaffold extends Module {
         boolean atEdge = isAtEdge();
 
         if (atEdge) {
-            mc.gameSettings.keyBindSneak.setPressed(true);
+            mc.gameSettings.keyBindSneak.pressed = true;
             mc.thePlayer.setSprinting(true);
             wasSneaking = true;
         } else {
             if (wasSneaking) {
-                mc.gameSettings.keyBindSneak.setPressed(false);
+                mc.gameSettings.keyBindSneak.pressed = false;
                 wasSneaking = false;
             }
         }
@@ -234,7 +241,7 @@ public class Scaffold extends Module {
                 slot, currentSlot, 2, mc.thePlayer);
         }
 
-        Vec3 hitVec = new Vec3(pos).addVector(0.5, 0.5, 0.5);
+        Vec3 hitVec = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
         EnumFacing placeFace = getPlacementFace(pos);
 
         mc.getNetHandler().addToSendQueue(new C08PacketPlayerBlockPlacement(
@@ -259,7 +266,7 @@ public class Scaffold extends Module {
 
     private EnumFacing getPlacementFace(BlockPos pos) {
         Vec3 playerPos = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
-        Vec3 blockCenter = new Vec3(pos).addVector(0.5, 0.5, 0.5);
+        Vec3 blockCenter = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
         Vec3 diff = blockCenter.subtract(playerPos);
 
         EnumFacing bestFace = EnumFacing.UP;

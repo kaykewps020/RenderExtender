@@ -1,5 +1,6 @@
 package me.cheat.client;
 
+import me.cheat.client.events.Event;
 import me.cheat.client.modules.ModuleManager;
 import me.cheat.client.ui.ClickGUI;
 import me.cheat.client.utils.ConfigManager;
@@ -23,7 +24,7 @@ public class CheatClient {
 
     public static final Minecraft mc = Minecraft.getMinecraft();
     public static CheatClient instance;
-    public static final net.minecraftforge.fml.common.eventhandler.EventBus EVENT_BUS = MinecraftForge.EVENT_BUS;
+    public static final Event.EventBus EVENT_BUS = new Event.EventBus();
 
     private static KeyBinding guiKey;
 

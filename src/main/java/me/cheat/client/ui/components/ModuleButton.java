@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ModuleButton {
-    private final Minecraft mc = Minecraft.getMinecraft();
+    private static final Minecraft mc = Minecraft.getMinecraft();
     private final Module module;
     private int x, y;
     private final int width;

@@ -78,7 +78,7 @@ public class ConfigManager {
         try {
             if (Files.exists(configPath)) {
                 String content = new String(Files.readAllBytes(configPath), StandardCharsets.UTF_8);
-                return JsonParser.parseString(content).getAsJsonObject();
+                return new JsonParser().parse(content).getAsJsonObject();
             }
         } catch (Exception ignored) {}
         return new JsonObject();

@@ -7,10 +7,13 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Timer;
 import net.minecraft.util.Vec3;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.Color;
@@ -142,10 +145,14 @@ public class RenderUtils {
     public static void drawEntityBox(Entity entity, int color, float lineWidth) {
         if (entity == null) return;
 
-        Vec3 camera = mc.getRenderManager().viewerPos;
-        double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * mc.timer.renderPartialTicks - camera.xCoord;
-        double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * mc.timer.renderPartialTicks - camera.yCoord;
-        double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * mc.timer.renderPartialTicks - camera.zCoord;
+        float partialTicks = getRenderPartialTicks();
+        RenderManager rm = mc.getRenderManager();
+        double cameraX = rm.viewerPosX;
+        double cameraY = rm.viewerPosY;
+        double cameraZ = rm.viewerPosZ;
+        double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - cameraX;
+        double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - cameraY;
+        double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - cameraZ;
 
         AxisAlignedBB bb = entity.getEntityBoundingBox();
         double w = (bb.maxX - bb.minX) / 2.0;
@@ -208,13 +215,16 @@ public class RenderUtils {
     }
 
     public static void drawLine(Vec3 start, Vec3 end, int color, float lineWidth) {
-        Vec3 camera = mc.getRenderManager().viewerPos;
-        double x1 = start.xCoord - camera.xCoord;
-        double y1 = start.yCoord - camera.yCoord;
-        double z1 = start.zCoord - camera.zCoord;
-        double x2 = end.xCoord - camera.xCoord;
-        double y2 = end.yCoord - camera.yCoord;
-        double z2 = end.zCoord - camera.zCoord;
+        RenderManager rm = mc.getRenderManager();
+        double cameraX = rm.viewerPosX;
+        double cameraY = rm.viewerPosY;
+        double cameraZ = rm.viewerPosZ;
+        double x1 = start.xCoord - cameraX;
+        double y1 = start.yCoord - cameraY;
+        double z1 = start.zCoord - cameraZ;
+        double x2 = end.xCoord - cameraX;
+        double y2 = end.yCoord - cameraY;
+        double z2 = end.zCoord - cameraZ;
 
         float a = (float) (color >> 24 & 255) / 255.0F;
         float r = (float) (color >> 16 & 255) / 255.0F;
@@ -236,6 +246,15 @@ public class RenderUtils {
         GlStateManager.enableDepth();
         GlStateManager.enableTexture2D();
         GlStateManager.disableBlend();
+    }
+
+    private static Timer cachedTimer = null;
+
+    private static float getRenderPartialTicks() {
+        if (cachedTimer == null) {
+            cachedTimer = ReflectionHelper.getPrivateValue(Minecraft.class, mc, "timer", "field_71428_T");
+        }
+        return cachedTimer.renderPartialTicks;
     }
 
     public static int getRainbowColor(int offset, float speed) {

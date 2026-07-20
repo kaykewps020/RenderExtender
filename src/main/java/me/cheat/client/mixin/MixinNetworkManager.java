@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(NetworkManager.class)
 public class MixinNetworkManager {
 
-    @Inject(method = "sendPacketNoEvent", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "sendPacket", at = @At("HEAD"), cancellable = true)
     private void onSendPacket(Packet<?> packet, CallbackInfo ci) {
         PacketEvent event = new PacketEvent(packet);
         CheatClient.EVENT_BUS.call(event);
