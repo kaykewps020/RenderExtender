@@ -5,7 +5,6 @@ import me.cheat.client.ui.ClickGUI;
 import me.cheat.client.utils.ConfigManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
-import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -24,6 +23,7 @@ public class CheatClient {
 
     public static final Minecraft mc = Minecraft.getMinecraft();
     public static CheatClient instance;
+    public static final net.minecraftforge.fml.common.eventhandler.EventBus EVENT_BUS = MinecraftForge.EVENT_BUS;
 
     private static KeyBinding guiKey;
 
