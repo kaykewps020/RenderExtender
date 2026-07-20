@@ -34,10 +34,18 @@ public class ModuleButton {
 
         for (Setting setting : module.getSettings()) {
             switch (setting.getType()) {
-                case BOOLEAN -> components.add(new BooleanComponent(setting));
-                case INTEGER -> components.add(new SliderComponent(setting, true));
-                case DOUBLE -> components.add(new SliderComponent(setting, false));
-                case MODE -> components.add(new ModeComponent(setting));
+                case BOOLEAN:
+                    components.add(new BooleanComponent(setting));
+                    break;
+                case INTEGER:
+                    components.add(new SliderComponent(setting, true));
+                    break;
+                case DOUBLE:
+                    components.add(new SliderComponent(setting, false));
+                    break;
+                case MODE:
+                    components.add(new ModeComponent(setting));
+                    break;
             }
         }
     }
