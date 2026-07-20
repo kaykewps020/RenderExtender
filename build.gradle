@@ -49,7 +49,7 @@ dependencies {
 }
 
 mixin {
-    add sourceSets.main, 'mixins.cheatclient.refmap.json'
+    add sourceSets.main, 'cheatclient.refmap.json'
 }
 
 jar {
