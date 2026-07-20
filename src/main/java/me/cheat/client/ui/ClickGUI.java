@@ -73,6 +73,9 @@ public class ClickGUI extends GuiScreen {
     // Category/module cached positions for hit testing during drag
     private final List<double[]> modulePositions = new ArrayList<>();
 
+    // Category data
+    private final List<CategoryData> categories = new ArrayList<>();
+
     // ─── Data Classes ───────────────────────────────────────
 
     private static class CategoryData {
