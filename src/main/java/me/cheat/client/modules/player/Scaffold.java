@@ -10,6 +10,7 @@ import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.GameSettings;
+import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
@@ -71,8 +72,8 @@ public class Scaffold extends Module {
     protected void onDisable() {
         MinecraftForge.EVENT_BUS.unregister(this);
         if (mc.thePlayer != null) {
-            mc.gameSettings.keyBindSneak.pressed = false;
-            mc.gameSettings.keyBindSprint.pressed = false;
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         }
         targetBlock = null;
     }
@@ -199,12 +200,12 @@ public class Scaffold extends Module {
         boolean atEdge = isAtEdge();
 
         if (atEdge) {
-            mc.gameSettings.keyBindSneak.pressed = true;
+            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), true);
             mc.thePlayer.setSprinting(true);
             wasSneaking = true;
         } else {
             if (wasSneaking) {
-                mc.gameSettings.keyBindSneak.pressed = false;
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
                 wasSneaking = false;
             }
         }
