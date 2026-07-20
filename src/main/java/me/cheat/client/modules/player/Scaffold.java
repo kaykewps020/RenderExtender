@@ -2,14 +2,11 @@ package me.cheat.client.modules.player;
 
 import me.cheat.client.modules.Category;
 import me.cheat.client.modules.Module;
-import me.cheat.client.utils.AntiDetection;
 import me.cheat.client.utils.RotationUtils;
 import net.minecraft.block.Block;
-import net.minecraft.block.BlockFire;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.settings.GameSettings;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.Item;
@@ -19,307 +16,244 @@ import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.network.play.client.C09PacketHeldItemChange;
 import net.minecraft.util.BlockPos;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MathHelper;
 import net.minecraft.util.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Keyboard;
 
-import java.util.Random;
-
+/**
+ * Scaffold - Auto-bridge / auto-block placer.
+ * 
+ * LOGIC:
+ * 1. Check if player is over air (needs bridging). If on solid ground, do nothing.
+ * 2. Find the best air position to place a block in.
+ * 3. Rotate to it, swap to a block item, place, swap back.
+ * 4. Only act when there's actually something to place.
+ */
 public class Scaffold extends Module {
-    private final Random random = new Random();
 
     private final Setting extend = new Setting("Extend", 4, 1, 6, 1);
-    private final Setting tower = new Setting("Tower Mode", false);
-    private final Setting swing = new Setting("Swing", true);
+    private final Setting tower = new Setting("Tower", false);
     private final Setting rotate = new Setting("Rotate", true);
-    private final Setting ninjaBridge = new Setting("Ninja Bridge", true);
-    private final Setting keepY = new Setting("Keep Y Level", true);
-    private final Setting speed = new Setting("Speed", 1.0, 0.5, 3.0, 0.1);
+    private final Setting swing = new Setting("Swing", true);
 
-    private BlockPos targetBlock = null;
-    private EnumFacing targetFacing = EnumFacing.UP;
-    private int slot = -1;
-    private float[] rotations = null;
-    private int blocksPlaced = 0;
-    private boolean wasSneaking = false;
-    private boolean wasSprinting = false;
+    // Internal state
+    private int origSlot = -1;
+    private boolean wasPlacing = false;
 
     public Scaffold() {
-        super("Scaffold", Category.PLAYER, 0x2F); // V key
+        super("Scaffold", Category.PLAYER, 0x2F);
         addSetting(extend);
         addSetting(tower);
-        addSetting(swing);
         addSetting(rotate);
-        addSetting(ninjaBridge);
-        addSetting(keepY);
-        addSetting(speed);
+        addSetting(swing);
     }
 
     @Override
     protected void onEnable() {
         MinecraftForge.EVENT_BUS.register(this);
-        targetBlock = null;
-        slot = -1;
-        rotations = null;
-        blocksPlaced = 0;
-        wasSneaking = false;
-        wasSprinting = false;
+        origSlot = -1;
+        wasPlacing = false;
     }
 
     @Override
     protected void onDisable() {
         MinecraftForge.EVENT_BUS.unregister(this);
+        // Restore original hotbar slot
+        if (origSlot >= 0 && origSlot < 9 && mc.thePlayer != null && mc.getNetHandler() != null) {
+            mc.thePlayer.inventory.currentItem = origSlot;
+            mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(origSlot));
+        }
+        origSlot = -1;
+        wasPlacing = false;
+        // Release sneak
         if (mc.thePlayer != null) {
             KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSprint.getKeyCode(), false);
         }
-        targetBlock = null;
     }
 
     @SubscribeEvent
     public void onPlayerTick(TickEvent.PlayerTickEvent event) {
-        if (event.player != mc.thePlayer) return;
         if (event.phase != TickEvent.Phase.END) return;
         if (mc.thePlayer == null || mc.theWorld == null) return;
         if (mc.thePlayer.isDead) return;
 
-        targetBlock = findTargetBlock();
-        if (targetBlock == null) {
-            targetBlock = findExtendedBlock();
-            if (targetBlock == null) return;
-        }
-
-        slot = findBlockSlot();
-        if (slot == -1) return;
-
-        BlockPos placePos = targetBlock.up();
-        if (!canPlaceBlock(placePos)) return;
-
-        if (rotate.getBoolean()) {
-            float[] rots = RotationUtils.getRotationsToBlock(targetBlock);
-            if (rots != null) {
-                rotations = rots;
-                mc.thePlayer.rotationYaw = rots[0];
-                mc.thePlayer.rotationPitch = rots[1];
+        try {
+            // Tower mode: jump when space held
+            if (tower.getBoolean() && Keyboard.isKeyDown(Keyboard.KEY_SPACE) && mc.thePlayer.onGround) {
+                mc.thePlayer.jump();
             }
-        }
 
-        if (ninjaBridge.getBoolean()) {
-            handleNinjaBridge();
-        }
+            // STEP 1: Check if we need to place a block
+            // We need bridging when the block 1 below AND the block 2 below our future position are air
+            // Simple check: is the block directly below our feet AIR?
+            BlockPos feetPos = mc.thePlayer.getPosition();
+            BlockPos belowFeet = feetPos.down();
 
-        if (tower.getBoolean() && Keyboard.isKeyDown(Keyboard.KEY_SPACE)) {
-            handleTower();
-            return;
-        }
+            // If below feet is solid and we're on ground, we don't need to scaffold
+            if (isSolidBlock(belowFeet) && mc.thePlayer.onGround) {
+                wasPlacing = false;
+                return;
+            }
 
-        placeBlock(placePos);
+            // STEP 2: Find the best position to place
+            BlockPos placePos = findPlacePosition();
+            if (placePos == null) {
+                wasPlacing = false;
+                return;
+            }
+
+            // STEP 3: Find a block item in hotbar
+            int blockSlot = findBlockInHotbar();
+            if (blockSlot == -1) {
+                wasPlacing = false;
+                return;
+            }
+
+            // STEP 4: Rotate to the block position
+            if (rotate.getBoolean()) {
+                float yaw = getLookAngleXZ(placePos);
+                mc.thePlayer.rotationYaw = yaw;
+                // Look down at ~75 degrees to place at feet
+                mc.thePlayer.rotationPitch = 75.0f;
+            }
+
+            // STEP 5: Swap to block item and place
+            int prevSlot = mc.thePlayer.inventory.currentItem;
+            if (prevSlot != blockSlot) {
+                mc.thePlayer.inventory.currentItem = blockSlot;
+                mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(blockSlot));
+            }
+
+            // Place the block
+            Vec3 hitVec = new Vec3(
+                placePos.getX() + 0.5,
+                placePos.getY() + 1.0,
+                placePos.getZ() + 0.5
+            );
+            mc.getNetHandler().addToSendQueue(new C08PacketPlayerBlockPlacement(
+                placePos,
+                1, // top face
+                mc.thePlayer.getHeldItem(),
+                0.5f, 1.0f, 0.5f
+            ));
+
+            if (swing.getBoolean()) {
+                mc.thePlayer.swingItem();
+            }
+
+            // STEP 6: Swap back to original slot
+            if (prevSlot != blockSlot) {
+                mc.thePlayer.inventory.currentItem = prevSlot;
+                mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(prevSlot));
+            }
+
+            wasPlacing = true;
+
+            // Sneak when near edge to not fall off
+            if (!mc.thePlayer.onGround) {
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), true);
+            } else {
+                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
+            }
+
+        } catch (Exception e) {
+            // Never crash
+        }
     }
 
-    private BlockPos findTargetBlock() {
-        if (mc.thePlayer == null) return null;
-        BlockPos playerPos = mc.thePlayer.getPosition();
-        EnumFacing facing = mc.thePlayer.getHorizontalFacing();
+    /**
+     * Find the best air position to place a block.
+     * Looks for air positions adjacent to the player's feet that have a solid neighbor.
+     * Priority: directly below > forward > sides
+     */
+    private BlockPos findPlacePosition() {
+        if (mc.thePlayer == null || mc.theWorld == null) return null;
 
-        BlockPos below = playerPos.down();
-        if (canPlaceOn(below)) {
-            targetFacing = EnumFacing.UP;
-            return below;
+        EnumFacing facing = mc.thePlayer.getHorizontalFacing();
+        BlockPos feetPos = mc.thePlayer.getPosition();
+        BlockPos belowFeet = feetPos.down();
+
+        // Try positions in order of priority:
+        // 1. Directly below feet (if air)
+        if (isAirBlock(belowFeet) && hasSolidNeighbor(belowFeet)) {
+            return belowFeet;
         }
 
-        int range = Math.max(3, extend.getInt());
-        for (int i = 1; i <= range; i++) {
-            BlockPos check = playerPos.down().offset(facing, i);
-            if (canPlaceOn(check)) {
-                targetFacing = EnumFacing.UP;
+        // 2. Forward from below feet
+        int ext = Math.min(extend.getInt(), 4);
+        for (int i = 1; i <= ext; i++) {
+            BlockPos check = belowFeet.offset(facing, i);
+            if (isAirBlock(check) && hasSolidNeighbor(check)) {
                 return check;
             }
         }
-        return null;
-    }
 
-    private BlockPos findExtendedBlock() {
-        if (mc.thePlayer == null) return null;
-        BlockPos playerPos = mc.thePlayer.getPosition();
-        EnumFacing facing = mc.thePlayer.getHorizontalFacing();
-        int range = extend.getInt() + 1;
+        // 3. Sides
+        for (int i = 0; i <= ext; i++) {
+            EnumFacing left = facing.rotateY();
+            EnumFacing right = facing.rotateYCCW();
 
-        for (int i = 1; i <= range; i++) {
-            for (int j = -1; j <= 1; j++) {
-                EnumFacing side = j == -1 ? facing.rotateY() :
-                    j == 1 ? facing.rotateYCCW() : facing;
-                BlockPos check = playerPos.down().offset(side, i);
-                if (canPlaceOn(check)) {
-                    targetFacing = EnumFacing.UP;
-                    return check;
-                }
-            }
+            BlockPos leftPos = belowFeet.offset(left, i);
+            BlockPos rightPos = belowFeet.offset(right, i);
+
+            if (isAirBlock(leftPos) && hasSolidNeighbor(leftPos)) return leftPos;
+            if (isAirBlock(rightPos) && hasSolidNeighbor(rightPos)) return rightPos;
         }
+
         return null;
     }
 
-    private boolean canPlaceOn(BlockPos pos) {
+    /**
+     * Check if block position has at least one solid adjacent block (to place against)
+     */
+    private boolean hasSolidNeighbor(BlockPos pos) {
+        for (EnumFacing dir : EnumFacing.values()) {
+            BlockPos neighbor = pos.offset(dir);
+            if (isSolidBlock(neighbor)) return true;
+        }
+        return false;
+    }
+
+    private boolean isAirBlock(BlockPos pos) {
+        if (mc.theWorld == null) return false;
+        Block block = mc.theWorld.getBlockState(pos).getBlock();
+        return block.isAir(mc.theWorld, pos);
+    }
+
+    private boolean isSolidBlock(BlockPos pos) {
         if (mc.theWorld == null) return false;
         IBlockState state = mc.theWorld.getBlockState(pos);
         Block block = state.getBlock();
-        return !block.isAir(mc.theWorld, pos) && block.isFullBlock() &&
-               !(block instanceof BlockLiquid) && !(block instanceof BlockFire);
+        return !block.isAir(mc.theWorld, pos) && block.isFullBlock() && !(block instanceof BlockLiquid);
     }
 
-    private boolean canPlaceBlock(BlockPos pos) {
-        if (mc.theWorld == null) return false;
-        Block block = mc.theWorld.getBlockState(pos).getBlock();
-        return block.isAir(mc.theWorld, pos) || block.isReplaceable(mc.theWorld, pos);
+    /**
+     * Get horizontal look angle (yaw) to a block position
+     */
+    private float getLookAngleXZ(BlockPos pos) {
+        double dx = pos.getX() + 0.5 - mc.thePlayer.posX;
+        double dz = pos.getZ() + 0.5 - mc.thePlayer.posZ;
+        float yaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
+        return yaw;
     }
 
-    private int findBlockSlot() {
+    /**
+     * Find first slot in hotbar (0-8) with a block item
+     */
+    private int findBlockInHotbar() {
         if (mc.thePlayer == null) return -1;
         InventoryPlayer inv = mc.thePlayer.inventory;
-
         for (int i = 0; i < 9; i++) {
             ItemStack stack = inv.getStackInSlot(i);
-            if (isBlockItem(stack)) return i;
-        }
-        for (int i = 9; i < 36; i++) {
-            ItemStack stack = inv.getStackInSlot(i);
-            if (isBlockItem(stack)) return i;
+            if (stack != null && stack.getItem() instanceof ItemBlock) {
+                return i;
+            }
         }
         return -1;
     }
 
-    private boolean isBlockItem(ItemStack stack) {
-        if (stack == null) return false;
-        Item item = stack.getItem();
-        return item instanceof ItemBlock && item != null;
-    }
-
-    private void handleNinjaBridge() {
-        if (mc.thePlayer == null) return;
-        boolean atEdge = isAtEdge();
-
-        if (atEdge) {
-            KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), true);
-            mc.thePlayer.setSprinting(true);
-            wasSneaking = true;
-        } else {
-            if (wasSneaking) {
-                KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
-                wasSneaking = false;
-            }
-        }
-    }
-
-    private boolean isAtEdge() {
-        if (mc.thePlayer == null) return false;
-        double xOffset = Math.abs(mc.thePlayer.posX - mc.thePlayer.getPosition().getX() - 0.5);
-        double zOffset = Math.abs(mc.thePlayer.posZ - mc.thePlayer.getPosition().getZ() - 0.5);
-        return xOffset > 0.3 || zOffset > 0.3;
-    }
-
-    private void handleTower() {
-        if (mc.thePlayer == null) return;
-        if (mc.thePlayer.onGround) {
-            mc.thePlayer.jump();
-        }
-        BlockPos below = mc.thePlayer.getPosition().down();
-        if (canPlaceBlock(below)) {
-            placeBlock(below);
-        }
-    }
-
-    private void placeBlock(BlockPos pos) {
-        if (mc.thePlayer == null || mc.getNetHandler() == null) return;
-
-        int currentSlot = mc.thePlayer.inventory.currentItem;
-        boolean swappedFromInventory = false;
-        int previousSlot = currentSlot;
-
-        // Handle hotbar slots (0-8): direct switch
-        if (slot >= 0 && slot < 9 && slot != currentSlot) {
-            mc.thePlayer.inventory.currentItem = slot;
-            mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(slot));
-        }
-        // Handle inventory slots (9+): quick-swap into current hotbar slot
-        else if (slot >= 9) {
-            mc.playerController.windowClick(
-                mc.thePlayer.inventoryContainer.windowId,
-                slot, currentSlot, 2, mc.thePlayer
-            );
-            swappedFromInventory = true;
-        }
-
-        Vec3 hitVec = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-        EnumFacing placeFace = getPlacementFace(pos);
-
-        mc.getNetHandler().addToSendQueue(new C08PacketPlayerBlockPlacement(
-            pos, placeFace.getIndex(),
-            mc.thePlayer.getHeldItem(),
-            (float)(hitVec.xCoord - pos.getX()),
-            (float)(hitVec.yCoord - pos.getY()),
-            (float)(hitVec.zCoord - pos.getZ())
-        ));
-
-        if (swing.getBoolean()) {
-            mc.thePlayer.swingItem();
-        }
-
-        blocksPlaced++;
-
-        // Restore previous state
-        if (slot >= 0 && slot < 9 && slot != previousSlot) {
-            // Restore hotbar selection
-            mc.thePlayer.inventory.currentItem = previousSlot;
-            mc.getNetHandler().addToSendQueue(new C09PacketHeldItemChange(previousSlot));
-        } else if (swappedFromInventory) {
-            // Swap item back from hotbar to inventory
-            // Find the block item we just placed from
-            int blockSlotInHotbar = -1;
-            ItemStack held = mc.thePlayer.getHeldItem();
-            if (held != null && isBlockItem(held)) {
-                // Find where this block originally was
-                for (int i = 9; i < 36; i++) {
-                    ItemStack stack = mc.thePlayer.inventoryContainer.getSlot(i).getStack();
-                    if (stack != null && stack.getItem() == held.getItem() && stack.stackSize < held.stackSize + 5) {
-                        blockSlotInHotbar = i;
-                        break;
-                    }
-                }
-            }
-            // Swap back: move item from currentSlot back to original inventory slot
-            if (blockSlotInHotbar != -1) {
-                mc.playerController.windowClick(
-                    mc.thePlayer.inventoryContainer.windowId,
-                    blockSlotInHotbar, currentSlot, 2, mc.thePlayer
-                );
-            }
-        }
-    }
-
-    private EnumFacing getPlacementFace(BlockPos pos) {
-        Vec3 playerPos = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ);
-        Vec3 blockCenter = new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-        Vec3 diff = blockCenter.subtract(playerPos);
-
-        EnumFacing bestFace = EnumFacing.UP;
-        double bestDist = Double.MAX_VALUE;
-
-        for (EnumFacing dir : EnumFacing.values()) {
-            Vec3 facePos = blockCenter.addVector(
-                dir.getFrontOffsetX() * 0.5,
-                dir.getFrontOffsetY() * 0.5,
-                dir.getFrontOffsetZ() * 0.5
-            );
-            double dist = facePos.distanceTo(playerPos);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestFace = dir;
-            }
-        }
-        return bestFace.getOpposite();
-    }
-
-    public boolean isNinjaBridging() { return isEnabled() && ninjaBridge.getBoolean(); }
-    public int getBlocksPlaced() { return blocksPlaced; }
+    public int getBlocksPlaced() { return 0; }
 }
