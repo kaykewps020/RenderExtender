@@ -1,5 +1,6 @@
 package me.cheat.client.ui;
 
+import me.cheat.client.utils.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
