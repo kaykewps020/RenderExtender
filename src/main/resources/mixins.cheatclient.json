@@ -12,7 +12,8 @@
     "MixinRenderLivingBase",
     "MixinGuiIngame",
     "MixinKeyBinding",
-    "MixinRenderGlobal"
+    "MixinRenderGlobal",
+    "MixinGuiMainMenu"
   ],
   "injectors": {
     "defaultRequire": 1
